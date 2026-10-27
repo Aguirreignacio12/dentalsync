@@ -86,7 +86,7 @@ export function createDemoState(today: string): DemoState {
       nextAppointmentId: "apt-carla",
       activities: [
         { id: "fu-carla-created", label: "Seguimiento abierto", detail: "Indicado por la Dra. Laura", at: stamp(addDays(today, -9), "12:30"), kind: "created" },
-        { id: "fu-carla-scheduled", label: "Próximo turno agendado", detail: "En Google Calendar", at: stamp(addDays(today, -2), "09:45"), kind: "scheduled" },
+        { id: "fu-carla-scheduled", label: "Próximo turno agendado", detail: "En agenda de demostración", at: stamp(addDays(today, -2), "09:45"), kind: "scheduled" },
       ],
     },
   ]

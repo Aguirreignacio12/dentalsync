@@ -35,7 +35,7 @@ export type FollowUpActivity = {
   label: string
   detail?: string
   at: string
-  kind: "created" | "message" | "response" | "contact" | "scheduled" | "closed"
+  kind: "created" | "message" | "response" | "contact" | "scheduled" | "closed" | "review"
 }
 
 export type FollowUp = {
@@ -45,6 +45,7 @@ export type FollowUp = {
   recommendedDate: string
   state: FollowUpState
   nextAppointmentId?: string
+  needsReview?: boolean
   activities: FollowUpActivity[]
 }
 

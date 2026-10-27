@@ -86,9 +86,9 @@ export function Sidebar({
         <div className="rounded-2xl border border-[#d9e7e1] bg-[#eef5f1] p-3.5">
           <div className="flex items-center gap-2 text-xs font-semibold text-[#286554]">
             <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-[#6ea994] opacity-35" /><span className="relative inline-flex size-2 rounded-full bg-[#41866e]" /></span>
-            Google Calendar conectado
+            Google Calendar · demo
           </div>
-          <p className="mt-1.5 pl-4 text-[11px] leading-relaxed text-[#5e776d]">Última sincronización hace 2 min</p>
+          <p className="mt-1.5 pl-4 text-[11px] leading-relaxed text-[#5e776d]">Última simulación hace 2 min</p>
         </div>
 
         <div className="flex items-center gap-3 border-t border-border/70 px-2 pt-4">

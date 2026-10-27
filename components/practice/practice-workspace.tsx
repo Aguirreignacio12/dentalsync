@@ -27,7 +27,7 @@ import { MobileBrand, MobileNavigation, Sidebar } from "./navigation"
 import { PatientsView } from "./patients-view"
 import type { Appointment, Communication, DemoState, DetailTarget, FollowUp, FollowUpActivity, Section } from "./types"
 
-const STORAGE_KEY = "dra-laura-agenda-demo-v1"
+const STORAGE_KEY_PREFIX = "dra-laura-agenda-demo-v1"
 
 type FollowUpScheduleTarget = { id: string; patientName: string; recommendedDate: string } | null
 
@@ -63,7 +63,7 @@ function createSystemCommunication(patientId: string, text: string, relation: { 
   }
 }
 
-export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
+export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; greeting: string }) {
   const [data, setData] = useState<DemoState>(() => createDemoState(todayKey))
   const [hasHydrated, setHasHydrated] = useState(false)
   const [activeSection, setActiveSection] = useState<Section>("inicio")
@@ -75,10 +75,11 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
   const [contactFollowUpId, setContactFollowUpId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncLabel, setLastSyncLabel] = useState("Hace 2 min")
+  const storageKey = `${STORAGE_KEY_PREFIX}-${todayKey}`
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(STORAGE_KEY)
+      const saved = window.localStorage.getItem(storageKey)
       if (saved) {
         const parsed: unknown = JSON.parse(saved)
         if (isDemoState(parsed)) setData(parsed)
@@ -88,16 +89,16 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
     } finally {
       setHasHydrated(true)
     }
-  }, [])
+  }, [storageKey])
 
   useEffect(() => {
     if (!hasHydrated) return
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      window.localStorage.setItem(storageKey, JSON.stringify(data))
     } catch {
       toast.error("No se pudo guardar el estado local", { description: "La demo seguirá funcionando hasta que cierres esta pestaña." })
     }
-  }, [data, hasHydrated])
+  }, [data, hasHydrated, storageKey])
 
   const patientById = useMemo(() => new Map(data.patients.map((patient) => [patient.id, patient])), [data.patients])
   const rescheduleAppointment = rescheduleId ? data.appointments.find((item) => item.id === rescheduleId) : undefined
@@ -270,7 +271,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
       ...current,
       appointments: [...current.appointments, appointment],
       followUps: current.followUps.map((item) => item.id === followUp.id
-        ? { ...item, state: "scheduled", nextAppointmentId: appointment.id, activities: [...item.activities, { id: makeId("activity"), label: "Próximo turno agendado", detail: `${date} · ${time}`, at: now, kind: "scheduled" }] }
+        ? { ...item, state: "scheduled", nextAppointmentId: appointment.id, needsReview: false, activities: [...item.activities, { id: makeId("activity"), label: "Próximo turno agendado", detail: `${date} · ${time}`, at: now, kind: "scheduled" }] }
         : item),
     }))
     setScheduleFollowUpId(null)
@@ -306,10 +307,27 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
     setData((current) => ({
       ...current,
       followUps: current.followUps.map((item) => item.id === followUpId
-        ? { ...item, state: "closed", activities: [...item.activities, { id: makeId("activity"), label: "Seguimiento cerrado por la odontóloga", detail: "Cierre manual registrado", at: now, kind: "closed" }] }
+        ? { ...item, state: "closed", needsReview: false, activities: [...item.activities, { id: makeId("activity"), label: "Seguimiento cerrado por la odontóloga", detail: "Cierre manual registrado", at: now, kind: "closed" }] }
         : item),
     }))
     toast.success("Seguimiento cerrado")
+  }
+
+  function toggleFollowUpReview(followUpId: string) {
+    const followUp = data.followUps.find((item) => item.id === followUpId)
+    if (!followUp || followUp.state === "closed") return
+    const needsReview = !followUp.needsReview
+    const now = new Date().toISOString()
+    const label = needsReview ? "Marcado para revisión" : "Se quitó la marca de revisión"
+    const detail = needsReview ? "La asistente dejó este seguimiento señalado para una revisión manual." : "La marca de revisión se quitó desde la lista operativa."
+
+    setData((current) => ({
+      ...current,
+      followUps: current.followUps.map((item) => item.id === followUpId
+        ? { ...item, needsReview, activities: [...item.activities, { id: makeId("activity"), label, detail, at: now, kind: "review" }] }
+        : item),
+    }))
+    toast.success(needsReview ? "Seguimiento marcado para revisión" : "Marca de revisión quitada")
   }
 
   function confirmAppointment(appointmentId: string) {
@@ -375,7 +393,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
     window.setTimeout(() => {
       setSyncing(false)
       setLastSyncLabel("Ahora")
-      toast.success("Agenda sincronizada", { description: "Esta es una demostración local; no se consultó Google Calendar." })
+      toast.success("Simulación actualizada", { description: "La agenda de demostración se actualizó; no se consultó Google Calendar." })
     }, 850)
   }
 
@@ -385,7 +403,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
     setDetailTarget(null)
     setMessageTarget(null)
     try {
-      window.localStorage.removeItem(STORAGE_KEY)
+      window.localStorage.removeItem(storageKey)
     } catch {
       // The in-memory reset still works if browser storage is unavailable.
     }
@@ -411,7 +429,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="hidden items-center gap-2 rounded-full border border-[#dce9e1] bg-[#f1f7f3] px-3 py-1.5 text-xs font-medium text-[#376956] sm:flex">
                 <Wifi aria-hidden="true" className="size-3.5" />
-                <span>Google Calendar</span>
+                <span>Google Calendar · demo</span>
                 <span className="text-[#6d8d7d]">· {lastSyncLabel}</span>
               </div>
               <Badge variant="outline" className="rounded-full border-[#eadfc9] bg-[#fbf8f0] px-2.5 py-1 text-[10px] font-semibold tracking-wide text-[#806e4d]">DEMO</Badge>
@@ -423,7 +441,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
           </div>
           <div className="flex items-center gap-2 px-4 pb-2 text-[11px] text-muted-foreground sm:hidden">
             <Wifi aria-hidden="true" className="size-3.5 text-primary" />
-            Google Calendar · {lastSyncLabel}
+            Google Calendar · demo · {lastSyncLabel}
             <span className="ml-auto inline-flex items-center gap-1"><Database aria-hidden="true" className="size-3" />Guardado localmente</span>
           </div>
         </header>
@@ -433,6 +451,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
             <DashboardView
               data={data}
               todayKey={todayKey}
+              greeting={greeting}
               onOpenAppointment={(id) => setDetailTarget({ kind: "appointment", id })}
               onOpenFollowUp={(id) => setDetailTarget({ kind: "follow-up", id })}
               onSendReminder={(id) => openMessage({ kind: "appointment", id })}
@@ -460,6 +479,7 @@ export function PracticeWorkspace({ todayKey }: { todayKey: string }) {
               onSendMessage={(id) => openMessage({ kind: "follow-up", id })}
               onSchedule={(id) => setScheduleFollowUpId(id)}
               onContact={(id) => setContactFollowUpId(id)}
+              onToggleReview={toggleFollowUpReview}
               onClose={closeFollowUp}
               onNewFollowUp={() => setNewFollowUpOpen(true)}
             />

@@ -73,7 +73,7 @@ export function AppointmentsView({
         </div>
         <Button variant="outline" onClick={onSync} disabled={syncing} className="h-10 w-full rounded-xl sm:w-auto">
           <CalendarDays data-icon="inline-start" className={syncing ? "animate-pulse" : undefined} />
-          {syncing ? "Actualizando…" : "Sincronizar Calendar"}
+          {syncing ? "Simulando…" : "Simular sincronización"}
         </Button>
       </div>
 
@@ -157,7 +157,7 @@ export function AppointmentsView({
                   <ReminderBadge state={appointment.reminder} />
                 </div>
                 <div className="flex items-center gap-2 sm:ml-1">
-                  <Button variant="outline" size="sm" onClick={() => onOpenAppointment(appointment.id)} className="h-9 flex-1 rounded-lg sm:flex-none">
+                  <Button variant="outline" size="sm" onClick={() => onOpenAppointment(appointment.id)} aria-label={`Ver detalle de ${patient.name}`} className="h-9 flex-1 rounded-lg sm:flex-none">
                     <Eye data-icon="inline-start" />
                     Ver detalle
                   </Button>

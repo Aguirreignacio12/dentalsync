@@ -1,6 +1,9 @@
 import { PracticeWorkspace } from "@/components/practice/practice-workspace"
-import { getDateKeyInArgentina } from "@/components/practice/formatters"
+import { getDateKeyInArgentina, getGreetingInArgentina } from "@/components/practice/formatters"
+
+export const dynamic = "force-dynamic"
 
 export default function Page() {
-  return <PracticeWorkspace todayKey={getDateKeyInArgentina()} />
+  const now = new Date()
+  return <PracticeWorkspace todayKey={getDateKeyInArgentina(now)} greeting={getGreetingInArgentina(now)} />
 }

@@ -9,6 +9,18 @@ export function getDateKeyInArgentina(date = new Date()) {
   return `${values.year}-${values.month}-${values.day}`
 }
 
+export function getGreetingInArgentina(date = new Date()) {
+  const hour = Number(new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    hourCycle: "h23",
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(date))
+
+  if (hour < 5 || hour >= 20) return "Buenas noches, Sofía"
+  if (hour >= 12) return "Buenas tardes, Sofía"
+  return "Buen día, Sofía"
+}
+
 export function formatDateLong(dateKey: string) {
   return new Intl.DateTimeFormat("es-AR", {
     weekday: "long",

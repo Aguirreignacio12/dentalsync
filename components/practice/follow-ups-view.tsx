@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { CalendarPlus2, Check, ChevronRight, Clock3, MessageCircleMore, Plus, UserRoundCheck } from "lucide-react"
+import { CalendarPlus2, Check, ChevronRight, Clock3, Flag, MessageCircleMore, Plus, UserRoundCheck } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -30,6 +31,7 @@ function FollowUpCard({
   onSendMessage,
   onSchedule,
   onContact,
+  onToggleReview,
   onClose,
 }: {
   followUp: FollowUp
@@ -41,6 +43,7 @@ function FollowUpCard({
   onSendMessage: () => void
   onSchedule: () => void
   onContact: () => void
+  onToggleReview: () => void
   onClose: () => void
 }) {
   const needsAction = followUp.state === "next-session-pending" || followUp.state === "contact-pending"
@@ -53,6 +56,7 @@ function FollowUpCard({
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={onOpen} className="text-left text-sm font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{patientName}</button>
               <FollowUpBadge state={followUp.state} />
+              {followUp.needsReview && <Badge variant="outline" className="status-badge status-warning"><Flag data-icon="inline-start" />Para revisar</Badge>}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {followUp.state === "scheduled" && nextAppointment
@@ -93,6 +97,16 @@ function FollowUpCard({
             ) : (
               <Button size="sm" variant="outline" onClick={onContact} className="h-9 rounded-lg">Registrar respuesta</Button>
             )}
+            <Button
+              size="sm"
+              variant={followUp.needsReview ? "secondary" : "ghost"}
+              aria-pressed={Boolean(followUp.needsReview)}
+              onClick={onToggleReview}
+              className="h-9 rounded-lg text-muted-foreground"
+            >
+              <Flag data-icon="inline-start" />
+              {followUp.needsReview ? "Quitar marca de revisión" : "Marcar para revisión"}
+            </Button>
             <Button size="sm" variant="ghost" onClick={onClose} className="ml-auto h-9 rounded-lg text-muted-foreground">
               <Check data-icon="inline-start" />
               Cerrar seguimiento
@@ -111,6 +125,7 @@ export function FollowUpsView({
   onSendMessage,
   onSchedule,
   onContact,
+  onToggleReview,
   onClose,
   onNewFollowUp,
 }: {
@@ -120,6 +135,7 @@ export function FollowUpsView({
   onSendMessage: (id: string) => void
   onSchedule: (id: string) => void
   onContact: (id: string) => void
+  onToggleReview: (id: string) => void
   onClose: (id: string) => void
   onNewFollowUp: () => void
 }) {
@@ -127,12 +143,12 @@ export function FollowUpsView({
   const patientById = useMemo(() => new Map(data.patients.map((patient) => [patient.id, patient])), [data.patients])
   const appointmentById = useMemo(() => new Map(data.appointments.map((appointment) => [appointment.id, appointment])), [data.appointments])
   const filteredFollowUps = data.followUps.filter((followUp) => {
-    if (filter === "attention") return ["next-session-pending", "contact-pending"].includes(followUp.state)
+    if (filter === "attention") return followUp.needsReview || ["next-session-pending", "contact-pending"].includes(followUp.state)
     if (filter === "waiting") return ["message-sent", "waiting-response"].includes(followUp.state)
     return followUp.state === filter
   }).sort((a, b) => a.recommendedDate.localeCompare(b.recommendedDate))
   const filterCount = (value: FollowUpFilter) => data.followUps.filter((followUp) => {
-    if (value === "attention") return ["next-session-pending", "contact-pending"].includes(followUp.state)
+    if (value === "attention") return followUp.needsReview || ["next-session-pending", "contact-pending"].includes(followUp.state)
     if (value === "waiting") return ["message-sent", "waiting-response"].includes(followUp.state)
     return followUp.state === value
   }).length
@@ -185,6 +201,7 @@ export function FollowUpsView({
                     onSendMessage={() => onSendMessage(followUp.id)}
                     onSchedule={() => onSchedule(followUp.id)}
                     onContact={() => onContact(followUp.id)}
+                    onToggleReview={() => onToggleReview(followUp.id)}
                     onClose={() => onClose(followUp.id)}
                   />
                 )
