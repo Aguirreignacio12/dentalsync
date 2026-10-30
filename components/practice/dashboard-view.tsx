@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  AlertCircle,
   ArrowRight,
   CalendarCheck2,
   CalendarClock,
@@ -10,7 +9,6 @@ import {
   Clock3,
   MessageCircleMore,
   RefreshCw,
-  Send,
   UsersRound,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -22,9 +20,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { CallListPanel, ReminderSummary, RequestsPanel } from "./reminder-panels"
+import { getCallList, getReminderSummary, getRequests } from "./reminder-engine"
 import { ReminderBadge, PatientAvatar, AppointmentBadges } from "./status-badges"
-import { daysBetween, formatDateLong, formatDateShort, formatRelativeDate } from "./formatters"
-import type { Appointment, DemoState, FollowUp } from "./types"
+import { formatDateLong, formatDateShort, formatRelativeDate } from "./formatters"
+import type { DemoState } from "./types"
 
 type AttentionItem = {
   id: string
@@ -33,80 +33,14 @@ type AttentionItem = {
   detail: string
   action: string
   status: string
-  statusTone: "status-pending" | "status-warning" | "status-violet" | "status-danger" | "status-info"
+  statusTone: "status-pending" | "status-warning" | "status-info"
   priority: number
-  icon: typeof AlertCircle
-  kind: "appointment" | "follow-up" | "reminder"
   targetId: string
 }
 
 function getAttentionItems(data: DemoState, today: string): AttentionItem[] {
   const items: AttentionItem[] = []
   const patientById = new Map(data.patients.map((patient) => [patient.id, patient]))
-
-  for (const appointment of data.appointments) {
-    if (appointment.state !== "scheduled" || appointment.attendance !== "unknown") continue
-    const patient = patientById.get(appointment.patientId)
-    if (!patient) continue
-
-    if (appointment.confirmation === "reschedule-requested") {
-      items.push({
-        id: `reschedule-${appointment.id}`,
-        patientId: patient.id,
-        patientName: patient.name,
-        detail: `Pidió cambiar el turno · ${formatRelativeDate(appointment.date, today)} a las ${appointment.time}`,
-        action: "Gestionar cambio",
-        status: "Cambio solicitado",
-        statusTone: "status-violet",
-        priority: 1,
-        icon: CalendarClock,
-        kind: "appointment",
-        targetId: appointment.id,
-      })
-    } else if (appointment.confirmation === "cancel-requested") {
-      items.push({
-        id: `cancel-${appointment.id}`,
-        patientId: patient.id,
-        patientName: patient.name,
-        detail: `Solicitó cancelar · ${formatRelativeDate(appointment.date, today)} a las ${appointment.time}`,
-        action: "Revisar solicitud",
-        status: "Cancelación solicitada",
-        statusTone: "status-danger",
-        priority: 1,
-        icon: MessageCircleMore,
-        kind: "appointment",
-        targetId: appointment.id,
-      })
-    } else if (appointment.reminder === "failed") {
-      items.push({
-        id: `failed-${appointment.id}`,
-        patientId: patient.id,
-        patientName: patient.name,
-        detail: `No pudimos entregar el recordatorio · ${formatRelativeDate(appointment.date, today)} a las ${appointment.time}`,
-        action: "Reintentar envío",
-        status: "No entregado",
-        statusTone: "status-danger",
-        priority: 0,
-        icon: AlertCircle,
-        kind: "reminder",
-        targetId: appointment.id,
-      })
-    } else if (appointment.confirmation === "pending" && daysBetween(today, appointment.date) <= 1) {
-      items.push({
-        id: `pending-${appointment.id}`,
-        patientId: patient.id,
-        patientName: patient.name,
-        detail: `Turno ${formatRelativeDate(appointment.date, today)} a las ${appointment.time} · sin confirmar`,
-        action: patient.whatsappConsent ? "Enviar recordatorio" : "Contactar paciente",
-        status: "Sin confirmar",
-        statusTone: "status-pending",
-        priority: 2,
-        icon: Send,
-        kind: patient.whatsappConsent ? "reminder" : "appointment",
-        targetId: appointment.id,
-      })
-    }
-  }
 
   for (const followUp of data.followUps) {
     if (!["next-session-pending", "contact-pending"].includes(followUp.state) && !followUp.needsReview) continue
@@ -129,8 +63,6 @@ function getAttentionItems(data: DemoState, today: string): AttentionItem[] {
         ? "status-warning"
         : followUp.state === "next-session-pending" ? "status-info" : "status-pending",
       priority: followUp.needsReview ? 2 : 3,
-      icon: CheckCircle2,
-      kind: "follow-up",
       targetId: followUp.id,
     })
   }
@@ -170,10 +102,10 @@ function MetricCard({
 export function DashboardView({
   data,
   todayKey,
+  now,
   greeting,
   onOpenAppointment,
   onOpenFollowUp,
-  onSendReminder,
   onNewFollowUp,
   onSelectAppointments,
   onSync,
@@ -181,10 +113,10 @@ export function DashboardView({
 }: {
   data: DemoState
   todayKey: string
+  now: number
   greeting: string
   onOpenAppointment: (id: string) => void
   onOpenFollowUp: (id: string) => void
-  onSendReminder: (id: string) => void
   onNewFollowUp: () => void
   onSelectAppointments: () => void
   onSync: () => void
@@ -197,6 +129,9 @@ export function DashboardView({
   const rescheduleRequests = activeAppointments.filter((appointment) => appointment.confirmation === "reschedule-requested")
   const pendingFollowUps = data.followUps.filter((followUp) => followUp.needsReview || ["next-session-pending", "contact-pending"].includes(followUp.state))
   const attentionItems = getAttentionItems(data, todayKey)
+  const callList = getCallList(data, now)
+  const requests = getRequests(data)
+  const summary = getReminderSummary(data, todayKey, now)
   const upcomingAppointments = activeAppointments
     .filter((appointment) => appointment.date >= todayKey)
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
@@ -223,6 +158,14 @@ export function DashboardView({
         <MetricCard label="Seguimientos" value={pendingFollowUps.length} helper="Con una acción pendiente" icon={UsersRound} tone="blue" />
       </section>
 
+      <section aria-label="Recordatorios automáticos" className="order-1 flex flex-col gap-5 md:order-2 xl:gap-6">
+        <ReminderSummary {...summary} />
+        <div className="grid items-start gap-5 xl:grid-cols-[1.08fr_0.92fr] xl:gap-6">
+          <CallListPanel items={callList} data={data} todayKey={todayKey} onOpenAppointment={onOpenAppointment} />
+          <RequestsPanel items={requests} data={data} todayKey={todayKey} onOpenAppointment={onOpenAppointment} />
+        </div>
+      </section>
+
       <section className="order-1 grid items-start gap-5 md:order-2 xl:grid-cols-[1.08fr_0.92fr] xl:gap-6">
         <Card className="overflow-hidden rounded-[22px] border-border/80 bg-card shadow-[0_2px_12px_rgba(25,45,39,0.025)]">
           <CardHeader className="flex flex-row items-center justify-between gap-4 px-5 pb-1 pt-5 sm:px-6 sm:pt-6">
@@ -230,14 +173,12 @@ export function DashboardView({
               <CardTitle className="text-[17px] font-semibold tracking-tight">Necesitan tu atención</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">Acciones que conviene resolver primero</p>
             </div>
-            <span className="rounded-full bg-[#f2f4ef] px-2.5 py-1 text-xs font-semibold text-[#59655c]">{attentionItems.length}</span>
+            <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">{attentionItems.length}</span>
           </CardHeader>
           <CardContent className="px-5 pb-4 pt-2 sm:px-6 sm:pb-5">
             {attentionItems.length ? (
               <ul className="divide-y divide-border/70">
                 {attentionItems.map((item) => {
-                  const Icon = item.icon
-                  const isReminder = item.kind === "reminder"
                   return (
                     <li key={item.id} className="flex items-center gap-3 py-4 first:pt-3 last:pb-1 sm:gap-4">
                       <PatientAvatar name={item.patientName} className="size-10 shrink-0" />
@@ -250,16 +191,13 @@ export function DashboardView({
                       </div>
                       <Button
                         size="sm"
-                        variant={isReminder ? "outline" : "ghost"}
+                        variant="ghost"
                         className="h-8 shrink-0 rounded-lg px-2.5 text-xs sm:px-3"
-                        onClick={() => {
-                          if (item.kind === "reminder") onSendReminder(item.targetId)
-                          else if (item.kind === "follow-up") onOpenFollowUp(item.targetId)
-                          else onOpenAppointment(item.targetId)
-                        }}
+                        aria-label={`${item.action}: ${item.patientName}`}
+                        onClick={() => onOpenFollowUp(item.targetId)}
                       >
                         <span className="hidden sm:inline">{item.action}</span>
-                        <span className="sm:hidden"><Icon aria-hidden="true" /></span>
+                        <span className="sm:hidden"><CheckCircle2 aria-hidden="true" /></span>
                         <ChevronRight aria-hidden="true" className="ml-0.5 hidden size-3.5 sm:block" />
                       </Button>
                     </li>

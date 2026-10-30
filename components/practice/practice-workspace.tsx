@@ -424,10 +424,10 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
             <DashboardView
               data={data}
               todayKey={todayKey}
+              now={nowMs}
               greeting={greeting}
               onOpenAppointment={(id) => setDetailTarget({ kind: "appointment", id })}
               onOpenFollowUp={(id) => setDetailTarget({ kind: "follow-up", id })}
-              onSendReminder={(id) => openMessage({ kind: "appointment", id })}
               onNewFollowUp={() => setNewFollowUpOpen(true)}
               onSelectAppointments={() => navigateToSection("turnos")}
               onSync={syncCalendar}
