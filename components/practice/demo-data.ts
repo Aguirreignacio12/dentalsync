@@ -56,7 +56,7 @@ export function createDemoState(today: string, now: string): DemoState {
     { id: "p-mateo", name: "Mateo Cabrera", phone: "+54 9 11 3678-4492", whatsappConsent: false },
   ]
 
-  const pending = { confirmation: "pending", state: "scheduled", attendance: "unknown", reminder: "not-sent", reminderAttempts: [] } as const
+  const pending: Pick<Appointment, "confirmation" | "state" | "attendance" | "reminder" | "reminderAttempts"> = { confirmation: "pending", state: "scheduled", attendance: "unknown", reminder: "not-sent", reminderAttempts: [] }
   const andresSlot = slotAhead(now, 10)
   const valentinaSlot = slotAhead(now, 22)
 

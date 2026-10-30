@@ -1,14 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarDays, CheckCircle2, Database, RotateCcw, Wifi } from "lucide-react"
+import { Database, RotateCcw, Wifi } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import { AppointmentsView } from "./appointments-view"
-import { createDemoState } from "./demo-data"
-import { formatRelativeDate } from "./formatters"
+import { DemoClock } from "./demo-clock"
+import { createDemoState, isDemoState } from "./demo-data"
+import { demoGateway } from "./demo-gateway"
+import { getDateKeyInArgentina, getGreetingInArgentina } from "./formatters"
 import { DetailDrawer } from "./detail-drawer"
 import { DashboardView } from "./dashboard-view"
 import {
@@ -19,38 +21,27 @@ import {
   SendWhatsAppDialog,
   type ContactOutcome,
   type MessageTarget,
-  type SimulatedAppointmentResponse,
   type SimulatedFollowUpResponse,
 } from "./interaction-dialogs"
 import { FollowUpsView } from "./follow-ups-view"
 import { MobileBrand, MobileNavigation, Sidebar } from "./navigation"
 import { PatientsView } from "./patients-view"
-import type { Appointment, Communication, DemoState, DetailTarget, FollowUp, FollowUpActivity, Section } from "./types"
+import { applyPatientResponse, resetReminderCycle, runReminderCycle, type PatientResponse } from "./reminder-engine"
+import type { Appointment, Communication, DemoState, DetailTarget, FollowUp, Section } from "./types"
 
-const STORAGE_KEY_PREFIX = "dra-laura-agenda-demo-v1"
+const STORAGE_KEY_PREFIX = "dra-laura-agenda-demo-v2"
+const CLOCK_TICK_MS = 60_000
+const HOUR_MS = 3_600_000
 
 type FollowUpScheduleTarget = { id: string; patientName: string; recommendedDate: string } | null
 
 type ContactTarget = { id: string; patientName: string } | null
 
-function isDemoState(value: unknown): value is DemoState {
-  if (!value || typeof value !== "object") return false
-  const candidate = value as Partial<DemoState>
-  return Array.isArray(candidate.patients)
-    && Array.isArray(candidate.appointments)
-    && Array.isArray(candidate.followUps)
-    && Array.isArray(candidate.communications)
-}
-
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 }
 
-function createActivity(label: string, kind: FollowUpActivity["kind"], detail?: string): FollowUpActivity {
-  return { id: makeId("activity"), label, kind, detail, at: new Date().toISOString() }
-}
-
-function createSystemCommunication(patientId: string, text: string, relation: { appointmentId?: string; followUpId?: string } = {}): Communication {
+function createSystemCommunication(patientId: string, text: string, at: string, relation: { appointmentId?: string; followUpId?: string } = {}): Communication {
   return {
     id: makeId("communication"),
     patientId,
@@ -59,12 +50,13 @@ function createSystemCommunication(patientId: string, text: string, relation: { 
     kind: "contact",
     text,
     status: "logged",
-    at: new Date().toISOString(),
+    at,
   }
 }
 
-export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; greeting: string }) {
-  const [data, setData] = useState<DemoState>(() => createDemoState(todayKey))
+export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: string; nowIso: string }) {
+  const [data, setData] = useState<DemoState>(() => createDemoState(realTodayKey, nowIso))
+  const [realNow, setRealNow] = useState(() => Date.parse(nowIso))
   const [hasHydrated, setHasHydrated] = useState(false)
   const [activeSection, setActiveSection] = useState<Section>("inicio")
   const [detailTarget, setDetailTarget] = useState<DetailTarget>(null)
@@ -75,7 +67,11 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
   const [contactFollowUpId, setContactFollowUpId] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncLabel, setLastSyncLabel] = useState("Hace 2 min")
-  const storageKey = `${STORAGE_KEY_PREFIX}-${todayKey}`
+  const storageKey = `${STORAGE_KEY_PREFIX}-${realTodayKey}`
+  const nowMs = realNow + data.clockOffsetMs
+  const now = new Date(nowMs).toISOString()
+  const todayKey = getDateKeyInArgentina(new Date(nowMs))
+  const greeting = getGreetingInArgentina(new Date(nowMs))
 
   useEffect(() => {
     try {
@@ -100,6 +96,16 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     }
   }, [data, hasHydrated, storageKey])
 
+  useEffect(() => {
+    const tick = window.setInterval(() => setRealNow(Date.now()), CLOCK_TICK_MS)
+    return () => window.clearInterval(tick)
+  }, [])
+
+  useEffect(() => {
+    if (!hasHydrated) return
+    setData((current) => runReminderCycle(current, new Date(nowMs).toISOString(), demoGateway))
+  }, [hasHydrated, nowMs])
+
   const patientById = useMemo(() => new Map(data.patients.map((patient) => [patient.id, patient])), [data.patients])
   const rescheduleAppointment = rescheduleId ? data.appointments.find((item) => item.id === rescheduleId) : undefined
   const reschedulePatient = rescheduleAppointment ? patientById.get(rescheduleAppointment.patientId) : undefined
@@ -123,35 +129,6 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     setMessageTarget(target)
   }
 
-  function sendAppointmentReminder(appointmentId: string) {
-    const appointment = data.appointments.find((item) => item.id === appointmentId)
-    const patient = appointment ? patientById.get(appointment.patientId) : undefined
-    if (!appointment || !patient) return
-    if (!patient.whatsappConsent) {
-      toast.error("No hay autorización para WhatsApp", { description: "Usá el canal habitual del consultorio." })
-      return
-    }
-    const relativeDate = formatRelativeDate(appointment.date, todayKey)
-    const communication: Communication = {
-      id: makeId("message"),
-      patientId: patient.id,
-      appointmentId,
-      direction: "outbound",
-      kind: "reminder",
-      text: `Recordatorio de turno para ${relativeDate} a las ${appointment.time}.`,
-      status: "delivered",
-      at: new Date().toISOString(),
-    }
-    setData((current) => ({
-      ...current,
-      appointments: current.appointments.map((item) => item.id === appointmentId
-        ? { ...item, reminder: "delivered", reminderSentAt: communication.at }
-        : item),
-      communications: [communication, ...current.communications],
-    }))
-    toast.success("Recordatorio simulado", { description: `El historial de ${patient.name} se actualizó.` })
-  }
-
   function sendFollowUpMessage(followUpId: string) {
     const followUp = data.followUps.find((item) => item.id === followUpId)
     const patient = followUp ? patientById.get(followUp.patientId) : undefined
@@ -160,7 +137,6 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
       toast.error("No hay autorización para WhatsApp", { description: "Usá el canal habitual del consultorio." })
       return
     }
-    const now = new Date().toISOString()
     const communication: Communication = {
       id: makeId("message"),
       patientId: patient.id,
@@ -181,33 +157,29 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     toast.success("Mensaje de seguimiento simulado", { description: `Se actualizó el historial de ${patient.name}.` })
   }
 
-  function recordAppointmentResponse(appointmentId: string, response: SimulatedAppointmentResponse) {
+  function recordAppointmentResponse(appointmentId: string, response: PatientResponse) {
     const appointment = data.appointments.find((item) => item.id === appointmentId)
     const patient = appointment ? patientById.get(appointment.patientId) : undefined
     if (!appointment || !patient) return
-    const responseDetails: Record<SimulatedAppointmentResponse, { confirmation: Appointment["confirmation"]; text: string; label: string }> = {
-      confirmed: { confirmation: "confirmed", text: "Confirmo mi turno.", label: "Turno confirmado" },
-      reschedule: { confirmation: "reschedule-requested", text: "¿Podemos reprogramar el turno?", label: "Solicitud de reprogramación registrada" },
-      cancel: { confirmation: "cancel-requested", text: "Necesito cancelar el turno.", label: "Solicitud de cancelación registrada" },
-      "no-response": { confirmation: appointment.confirmation, text: "No se registró respuesta en la simulación.", label: "Sin respuesta: el turno sigue pendiente" },
+    const responseDetails: Record<PatientResponse, { text: string; label: string }> = {
+      confirmed: { text: "Confirmo mi turno.", label: "Turno confirmado" },
+      reschedule: { text: "¿Podemos reprogramar el turno?", label: "Solicitud de reprogramación registrada" },
+      cancel: { text: "Necesito cancelar el turno.", label: "Solicitud de cancelación registrada" },
     }
     const details = responseDetails[response]
-    const now = new Date().toISOString()
     const communication: Communication = {
-      id: makeId(response === "no-response" ? "log" : "response"),
+      id: makeId("response"),
       patientId: patient.id,
       appointmentId,
-      direction: response === "no-response" ? "system" : "inbound",
-      kind: response === "no-response" ? "contact" : "response",
+      direction: "inbound",
+      kind: "response",
       text: details.text,
-      status: response === "no-response" ? "logged" : "received",
+      status: "received",
       at: now,
     }
     setData((current) => ({
       ...current,
-      appointments: current.appointments.map((item) => item.id === appointmentId
-        ? { ...item, confirmation: details.confirmation }
-        : item),
+      appointments: current.appointments.map((item) => item.id === appointmentId ? applyPatientResponse(item, response) : item),
       communications: [communication, ...current.communications],
     }))
     toast.success(details.label)
@@ -217,10 +189,9 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     const followUp = data.followUps.find((item) => item.id === followUpId)
     const patient = followUp ? patientById.get(followUp.patientId) : undefined
     if (!followUp || !patient) return
-    const now = new Date().toISOString()
     const wantsToSchedule = response === "wants-to-schedule"
     const label = wantsToSchedule ? "Respondió: quiere coordinar un turno" : "No hubo respuesta registrada"
-    const communication = createSystemCommunication(patient.id, label, { followUpId })
+    const communication = createSystemCommunication(patient.id, label, now, { followUpId })
     setData((current) => ({
       ...current,
       followUps: current.followUps.map((item) => item.id === followUpId
@@ -238,7 +209,6 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
       toast.error("Ya hay un seguimiento abierto", { description: patient?.name ?? "Revisá el seguimiento existente." })
       return
     }
-    const now = new Date().toISOString()
     const followUp: FollowUp = {
       id: makeId("follow-up"),
       patientId,
@@ -265,8 +235,8 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
       state: "scheduled",
       attendance: "unknown",
       reminder: "not-sent",
+      reminderAttempts: [],
     }
-    const now = new Date().toISOString()
     setData((current) => ({
       ...current,
       appointments: [...current.appointments, appointment],
@@ -288,9 +258,8 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
       "contact-later": { state: "contact-pending", label: "Contacto pendiente", detail: "Se acordó volver a contactar más adelante." },
     }
     const result = details[outcome]
-    const now = new Date().toISOString()
     const activity = { id: makeId("activity"), label: result.label, detail: result.detail, at: now, kind: "contact" as const }
-    const communication = createSystemCommunication(followUp.patientId, result.detail, { followUpId: followUp.id })
+    const communication = createSystemCommunication(followUp.patientId, result.detail, now, { followUpId: followUp.id })
     setData((current) => ({
       ...current,
       followUps: current.followUps.map((item) => item.id === followUp.id
@@ -303,7 +272,6 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
   }
 
   function closeFollowUp(followUpId: string) {
-    const now = new Date().toISOString()
     setData((current) => ({
       ...current,
       followUps: current.followUps.map((item) => item.id === followUpId
@@ -317,7 +285,6 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     const followUp = data.followUps.find((item) => item.id === followUpId)
     if (!followUp || followUp.state === "closed") return
     const needsReview = !followUp.needsReview
-    const now = new Date().toISOString()
     const label = needsReview ? "Marcado para revisión" : "Se quitó la marca de revisión"
     const detail = needsReview ? "La asistente dejó este seguimiento señalado para una revisión manual." : "La marca de revisión se quitó desde la lista operativa."
 
@@ -333,10 +300,10 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
   function confirmAppointment(appointmentId: string) {
     const appointment = data.appointments.find((item) => item.id === appointmentId)
     if (!appointment) return
-    const communication = createSystemCommunication(appointment.patientId, "Confirmación registrada por la asistente.", { appointmentId })
+    const communication = createSystemCommunication(appointment.patientId, "Confirmación registrada por la asistente.", now, { appointmentId })
     setData((current) => ({
       ...current,
-      appointments: current.appointments.map((item) => item.id === appointmentId ? { ...item, confirmation: "confirmed" } : item),
+      appointments: current.appointments.map((item) => item.id === appointmentId ? { ...item, confirmation: "confirmed", callReason: undefined } : item),
       communications: [communication, ...current.communications],
     }))
     toast.success("Turno marcado como confirmado")
@@ -345,14 +312,14 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
   function cancelAppointment(appointmentId: string) {
     const appointment = data.appointments.find((item) => item.id === appointmentId)
     if (!appointment) return
-    const communication = createSystemCommunication(appointment.patientId, "Cancelación registrada por la asistente.", { appointmentId })
+    const communication = createSystemCommunication(appointment.patientId, "Cancelación registrada por la asistente.", now, { appointmentId })
     setData((current) => ({
       ...current,
       appointments: current.appointments.map((item) => item.id === appointmentId
-        ? { ...item, state: "cancelled", attendance: "cancelled" }
+        ? { ...item, state: "cancelled", attendance: "cancelled", callReason: undefined }
         : item),
       followUps: current.followUps.map((item) => item.nextAppointmentId === appointmentId
-        ? { ...item, state: "contact-pending", nextAppointmentId: undefined, activities: [...item.activities, { id: makeId("activity"), label: "Turno cancelado", detail: "Revisar si hace falta coordinar otro horario.", at: new Date().toISOString(), kind: "contact" }] }
+        ? { ...item, state: "contact-pending", nextAppointmentId: undefined, activities: [...item.activities, { id: makeId("activity"), label: "Turno cancelado", detail: "Revisar si hace falta coordinar otro horario.", at: now, kind: "contact" }] }
         : item),
       communications: [communication, ...current.communications],
     }))
@@ -363,7 +330,7 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     const appointment = data.appointments.find((item) => item.id === appointmentId)
     if (!appointment) return
     const label = attendance === "attended" ? "Asistencia registrada: asistió." : "Asistencia registrada: no asistió."
-    const communication = createSystemCommunication(appointment.patientId, label, { appointmentId })
+    const communication = createSystemCommunication(appointment.patientId, label, now, { appointmentId })
     setData((current) => ({
       ...current,
       appointments: current.appointments.map((item) => item.id === appointmentId ? { ...item, attendance } : item),
@@ -374,13 +341,10 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
 
   function saveReschedule(date: string, time: string) {
     if (!rescheduleAppointment) return
-    const now = new Date().toISOString()
-    const communication = createSystemCommunication(rescheduleAppointment.patientId, `Turno actualizado en la demo para ${date} a las ${time}.`, { appointmentId: rescheduleAppointment.id })
+    const communication = createSystemCommunication(rescheduleAppointment.patientId, `Turno actualizado en la demo para ${date} a las ${time}.`, now, { appointmentId: rescheduleAppointment.id })
     setData((current) => ({
       ...current,
-      appointments: current.appointments.map((item) => item.id === rescheduleAppointment.id
-        ? { ...item, date, time, state: "scheduled", confirmation: "pending", attendance: "unknown", reminder: "not-sent", reminderSentAt: undefined }
-        : item),
+      appointments: current.appointments.map((item) => item.id === rescheduleAppointment.id ? resetReminderCycle(item, date, time) : item),
       communications: [communication, ...current.communications],
     }))
     setRescheduleId(null)
@@ -397,8 +361,14 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
     }, 850)
   }
 
+  function advanceClock(hours: 1 | 6 | 24) {
+    setData((current) => ({ ...current, clockOffsetMs: current.clockOffsetMs + hours * HOUR_MS }))
+  }
+
   function resetDemo() {
-    setData(createDemoState(todayKey))
+    const realNowIso = new Date().toISOString()
+    setRealNow(Date.parse(realNowIso))
+    setData(createDemoState(getDateKeyInArgentina(new Date(realNowIso)), realNowIso))
     setActiveSection("inicio")
     setDetailTarget(null)
     setMessageTarget(null)
@@ -443,6 +413,9 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
             <Wifi aria-hidden="true" className="size-3.5 text-primary" />
             Google Calendar · demo · {lastSyncLabel}
             <span className="ml-auto inline-flex items-center gap-1"><Database aria-hidden="true" className="size-3" />Guardado localmente</span>
+          </div>
+          <div className="mx-auto flex max-w-[1440px] px-4 pb-2 sm:px-6 lg:px-10">
+            <DemoClock now={now} onAdvance={advanceClock} />
           </div>
         </header>
 
@@ -519,9 +492,7 @@ export function PracticeWorkspace({ todayKey, greeting }: { todayKey: string; gr
         data={data}
         todayKey={todayKey}
         onOpenChange={(open) => { if (!open) setMessageTarget(null) }}
-        onSendAppointment={sendAppointmentReminder}
         onSendFollowUp={sendFollowUpMessage}
-        onAppointmentResponse={recordAppointmentResponse}
         onFollowUpResponse={recordFollowUpResponse}
       />
 
