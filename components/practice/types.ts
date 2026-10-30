@@ -10,6 +10,10 @@ export type AppointmentState = "scheduled" | "cancelled"
 export type AttendanceState = "unknown" | "attended" | "no-show" | "cancelled"
 export type ReminderState = "not-sent" | "sent" | "delivered" | "failed"
 
+export type ReminderStep = "first" | "second"
+export type ReminderAttempt = { step: ReminderStep; at: string; result: "delivered" | "failed" }
+export type CallReason = "no-consent" | "too-soon" | "no-response" | "undelivered"
+
 export type Appointment = {
   id: string
   patientId: string
@@ -20,6 +24,8 @@ export type Appointment = {
   attendance: AttendanceState
   reminder: ReminderState
   reminderSentAt?: string
+  reminderAttempts: ReminderAttempt[]
+  callReason?: CallReason
 }
 
 export type FollowUpState =
@@ -74,6 +80,7 @@ export type DemoState = {
   appointments: Appointment[]
   followUps: FollowUp[]
   communications: Communication[]
+  clockOffsetMs: number
 }
 
 export type DetailTarget =

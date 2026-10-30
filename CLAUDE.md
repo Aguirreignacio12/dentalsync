@@ -23,13 +23,14 @@ pnpm install
 pnpm dev                 # http://localhost:3000
 pnpm build
 pnpm exec tsc --noEmit   # tipos
+pnpm test                # Vitest
 ```
 
 No hay linter configurado.
 
 ## Tests
 
-Todavía no hay runner de tests. El feature actual agrega Vitest para la lógica de negocio. La interfaz se verifica en el navegador.
+Vitest cubre la lógica de negocio con la hora fija. La interfaz se verifica en el navegador.
 
 ## Estructura
 
