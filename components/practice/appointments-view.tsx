@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  MessageCircleMore,
   Search,
   SlidersHorizontal,
 } from "lucide-react"
@@ -14,15 +13,17 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
-import { AppointmentBadges, PatientAvatar, ReminderBadge } from "./status-badges"
+import { AppointmentBadges, CallReasonBadge, PatientAvatar, ReminderBadge } from "./status-badges"
 import { addDays } from "./demo-data"
 import { formatDateLong, formatDateShort, formatRelativeDate } from "./formatters"
+import { isEligible } from "./reminder-engine"
 import type { Appointment, DemoState } from "./types"
 
-type AppointmentFilter = "all" | "pending" | "confirmed" | "change-requested" | "cancelled" | "attended" | "no-show"
+type AppointmentFilter = "all" | "call" | "pending" | "confirmed" | "change-requested" | "cancelled" | "attended" | "no-show"
 
-function matchesFilter(appointment: Appointment, filter: AppointmentFilter) {
+function matchesFilter(appointment: Appointment, filter: AppointmentFilter, now: number) {
   if (filter === "all") return true
+  if (filter === "call") return Boolean(appointment.callReason) && isEligible(appointment, now)
   if (filter === "pending") return appointment.state === "scheduled" && appointment.confirmation === "pending"
   if (filter === "confirmed") return appointment.state === "scheduled" && appointment.confirmation === "confirmed"
   if (filter === "change-requested") return appointment.confirmation === "reschedule-requested" || appointment.confirmation === "cancel-requested"
@@ -34,15 +35,15 @@ function matchesFilter(appointment: Appointment, filter: AppointmentFilter) {
 export function AppointmentsView({
   data,
   todayKey,
+  now,
   onOpenAppointment,
-  onSendReminder,
   onSync,
   syncing,
 }: {
   data: DemoState
   todayKey: string
+  now: number
   onOpenAppointment: (id: string) => void
-  onSendReminder: (id: string) => void
   onSync: () => void
   syncing: boolean
 }) {
@@ -50,16 +51,17 @@ export function AppointmentsView({
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<AppointmentFilter>("all")
   const patientById = useMemo(() => new Map(data.patients.map((patient) => [patient.id, patient])), [data.patients])
+  const showsAllDays = filter === "call"
 
   const visibleAppointments = data.appointments
-    .filter((appointment) => appointment.date === selectedDate)
-    .filter((appointment) => matchesFilter(appointment, filter))
+    .filter((appointment) => showsAllDays || appointment.date === selectedDate)
+    .filter((appointment) => matchesFilter(appointment, filter, now))
     .filter((appointment) => {
       if (!search.trim()) return true
       const patient = patientById.get(appointment.patientId)
       return patient?.name.toLocaleLowerCase("es-AR").includes(search.trim().toLocaleLowerCase("es-AR"))
     })
-    .sort((a, b) => a.time.localeCompare(b.time))
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
 
   const dayLabel = selectedDate === todayKey ? "Hoy" : formatDateLong(selectedDate)
 
@@ -117,6 +119,7 @@ export function AppointmentsView({
                 className="h-10 w-full appearance-none rounded-xl border border-input bg-background pl-9 pr-9 text-sm text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
               >
                 <option value="all">Todos los estados</option>
+                <option value="call">Hay que llamar</option>
                 <option value="pending">Pendientes de confirmar</option>
                 <option value="confirmed">Confirmados</option>
                 <option value="change-requested">Cambios solicitados</option>
@@ -130,11 +133,11 @@ export function AppointmentsView({
         </CardContent>
       </Card>
 
-      <section aria-label={`Turnos para ${dayLabel}`} className="flex flex-col gap-3">
+      <section aria-label={showsAllDays ? "Turnos para llamar" : `Turnos para ${dayLabel}`} className="flex flex-col gap-3">
         {visibleAppointments.length ? visibleAppointments.map((appointment) => {
           const patient = patientById.get(appointment.patientId)
           if (!patient) return null
-          const isSendable = patient.whatsappConsent && appointment.state === "scheduled"
+          const callReason = isEligible(appointment, now) ? appointment.callReason : undefined
           return (
             <Card key={appointment.id} className="rounded-[20px] border-border/80 bg-card shadow-[0_2px_12px_rgba(25,45,39,0.02)] transition-shadow hover:shadow-[0_8px_24px_rgba(25,45,39,0.06)]">
               <CardContent className="flex flex-col gap-3 p-4 xl:flex-row xl:items-center xl:gap-4 xl:px-5">
@@ -153,27 +156,16 @@ export function AppointmentsView({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {showsAllDays && <span className="text-xs font-medium text-muted-foreground">{formatRelativeDate(appointment.date, todayKey)}</span>}
                   <AppointmentBadges appointment={appointment} />
                   <ReminderBadge state={appointment.reminder} />
+                  {callReason && <CallReasonBadge reason={callReason} />}
                 </div>
                 <div className="flex items-center gap-2 sm:ml-1">
                   <Button variant="outline" size="sm" onClick={() => onOpenAppointment(appointment.id)} aria-label={`Ver detalle de ${patient.name}`} className="h-9 flex-1 rounded-lg sm:flex-none">
                     <Eye data-icon="inline-start" />
                     Ver detalle
                   </Button>
-                  {appointment.state === "scheduled" && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={patient.whatsappConsent ? `Enviar recordatorio a ${patient.name}` : `WhatsApp deshabilitado: falta autorización de ${patient.name}`}
-                      title={patient.whatsappConsent ? "Enviar recordatorio" : "Falta autorización de WhatsApp"}
-                      disabled={!isSendable}
-                      onClick={() => onSendReminder(appointment.id)}
-                      className="rounded-lg"
-                    >
-                      <MessageCircleMore aria-hidden="true" />
-                    </Button>
-                  )}
                 </div>
               </CardContent>
               {appointment.state === "scheduled" && !patient.whatsappConsent && (

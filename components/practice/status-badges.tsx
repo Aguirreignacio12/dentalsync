@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getInitials } from "./formatters"
-import type { Appointment, AttendanceState, ConfirmationState, ReminderState } from "./types"
+import { callReasonLabels } from "./reminder-engine"
+import type { Appointment, AttendanceState, CallReason, ConfirmationState, ReminderState } from "./types"
 
 const confirmationDetails: Record<ConfirmationState, { label: string; tone: string }> = {
   pending: { label: "Pendiente de confirmación", tone: "pending" },
@@ -22,6 +23,17 @@ const reminderDetails: Record<ReminderState, { label: string; tone: string }> = 
   sent: { label: "Enviado", tone: "info" },
   delivered: { label: "Entregado", tone: "success" },
   failed: { label: "No entregado", tone: "danger" },
+}
+
+const callReasonTones: Record<CallReason, string> = {
+  "no-consent": "warning",
+  "too-soon": "warning",
+  "no-response": "warning",
+  undelivered: "danger",
+}
+
+export function CallReasonBadge({ reason }: { reason: CallReason }) {
+  return <Badge variant="outline" className={`status-badge status-${callReasonTones[reason]}`}>{callReasonLabels[reason]}</Badge>
 }
 
 export function ConfirmationBadge({ state }: { state: ConfirmationState }) {

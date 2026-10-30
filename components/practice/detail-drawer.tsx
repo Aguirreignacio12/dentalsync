@@ -22,13 +22,21 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { AttendanceBadge, ConfirmationBadge, FollowUpBadge, PatientAvatar, ReminderBadge } from "./status-badges"
-import { daysBetween, formatDateLong, formatDateShort, formatRelativeDate, formatTimestamp, getFirstName } from "./formatters"
-import type { DemoState, DetailTarget, FollowUpActivity } from "./types"
+import { AttendanceBadge, CallReasonBadge, ConfirmationBadge, FollowUpBadge, PatientAvatar, ReminderBadge } from "./status-badges"
+import { formatDateLong, formatDateShort, formatRelativeDate, formatTimestamp } from "./formatters"
+import { isEligible, type PatientResponse } from "./reminder-engine"
+import type { Appointment, DemoState, DetailTarget, FollowUpActivity } from "./types"
 import type { MessageTarget } from "./interaction-dialogs"
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold uppercase tracking-[0.11em] text-muted-foreground">{children}</p>
+}
+
+function getReminderProgress(appointment: Appointment) {
+  const last = appointment.reminderAttempts.at(-1)
+  if (!last) return "Todavía no se envió ningún recordatorio."
+  const step = last.step === "first" ? "Primer" : "Segundo"
+  return `${step} recordatorio ${last.result === "delivered" ? "entregado" : "no entregado"}.`
 }
 
 function CommunicationList({ data, patientId, appointmentId, followUpId }: {
@@ -93,6 +101,7 @@ export function DetailDrawer({
   target,
   data,
   todayKey,
+  now,
   onClose,
   onOpenAppointment,
   onOpenFollowUp,
@@ -100,6 +109,7 @@ export function DetailDrawer({
   onConfirmAppointment,
   onCancelAppointment,
   onSetAttendance,
+  onSimulateResponse,
   onReschedule,
   onContactFollowUp,
   onScheduleFollowUp,
@@ -108,6 +118,7 @@ export function DetailDrawer({
   target: DetailTarget
   data: DemoState
   todayKey: string
+  now: number
   onClose: () => void
   onOpenAppointment: (id: string) => void
   onOpenFollowUp: (id: string) => void
@@ -115,6 +126,7 @@ export function DetailDrawer({
   onConfirmAppointment: (id: string) => void
   onCancelAppointment: (id: string) => void
   onSetAttendance: (id: string, state: "attended" | "no-show") => void
+  onSimulateResponse: (id: string, response: PatientResponse) => void
   onReschedule: (id: string) => void
   onContactFollowUp: (id: string) => void
   onScheduleFollowUp: (id: string) => void
@@ -129,6 +141,9 @@ export function DetailDrawer({
     ? data.appointments.filter((item) => item.patientId === patient.id && item.state === "scheduled" && item.date >= todayKey).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))[0]
     : undefined
   const canRecordAttendance = !!appointment && appointment.state === "scheduled" && appointment.date <= todayKey
+  const appointmentEligible = !!appointment && isEligible(appointment, now)
+  const callReason = appointmentEligible ? appointment.callReason : undefined
+  const canSimulateResponse = appointmentEligible && appointment.reminderAttempts.some((attempt) => attempt.result === "delivered")
 
   return (
     <Sheet open={!!target} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -167,7 +182,11 @@ export function DetailDrawer({
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div><SectionLabel>Confirmación</SectionLabel><div className="mt-2"><ConfirmationBadge state={appointment.confirmation} /></div></div>
                       <div><SectionLabel>Asistencia</SectionLabel><div className="mt-2"><AttendanceBadge state={appointment.attendance} /></div></div>
-                      <div className="sm:col-span-2"><SectionLabel>Recordatorio</SectionLabel><div className="mt-2"><ReminderBadge state={appointment.reminder} /></div></div>
+                      <div className="sm:col-span-2">
+                        <SectionLabel>Recordatorio automático</SectionLabel>
+                        <div className="mt-2 flex flex-wrap items-center gap-2"><ReminderBadge state={appointment.reminder} />{callReason && <CallReasonBadge reason={callReason} />}</div>
+                        <p className="mt-2 text-xs text-muted-foreground">{getReminderProgress(appointment)} Simulado: no se envía por WhatsApp.</p>
+                      </div>
                     </div>
                   </section>
 
@@ -191,12 +210,20 @@ export function DetailDrawer({
                     </Alert>
                   )}
 
+                  {canSimulateResponse && (
+                    <section className="rounded-2xl border border-border/80 bg-card p-4">
+                      <SectionLabel>Simular respuesta del paciente</SectionLabel>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs" onClick={() => onSimulateResponse(appointment.id, "confirmed")}><Check data-icon="inline-start" />Confirmar</Button>
+                        <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs" onClick={() => onSimulateResponse(appointment.id, "reschedule")}><CalendarPlus2 data-icon="inline-start" />Necesito reprogramar</Button>
+                        <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs sm:col-span-2" onClick={() => onSimulateResponse(appointment.id, "cancel")}>Solicitar cancelar</Button>
+                      </div>
+                    </section>
+                  )}
+
                   {appointment.state === "scheduled" && (
                     <section className="flex flex-col gap-2">
                       <SectionLabel>Acciones del turno</SectionLabel>
-                      <Button className="h-10 justify-start rounded-xl" disabled={!patient.whatsappConsent} onClick={() => onSendMessage({ kind: "appointment", id: appointment.id })}>
-                        <MessageCircleMore data-icon="inline-start" />{appointment.reminder === "failed" ? "Reintentar recordatorio" : "Enviar recordatorio"}
-                      </Button>
                       {appointment.confirmation === "pending" && <Button variant="outline" className="h-10 justify-start rounded-xl" onClick={() => onConfirmAppointment(appointment.id)}><Check data-icon="inline-start" />Marcar como confirmado</Button>}
                       <Button variant="outline" className="h-10 justify-start rounded-xl" onClick={() => onReschedule(appointment.id)}><CalendarPlus2 data-icon="inline-start" />Reprogramar turno</Button>
                       {appointment.confirmation === "cancel-requested" ? (
@@ -214,7 +241,7 @@ export function DetailDrawer({
                   )}
 
                   <section>
-                    <SectionLabel>Historial del turno</SectionLabel>
+                    <SectionLabel>Historial del turno (simulado)</SectionLabel>
                     <CommunicationList data={data} patientId={patient.id} appointmentId={appointment.id} />
                   </section>
                 </>
@@ -287,13 +314,12 @@ export function DetailDrawer({
                     </section>
                   )}
 
-                  {nextAppointment && <Button className="h-10 rounded-xl" disabled={!patient.whatsappConsent} onClick={() => onSendMessage({ kind: "appointment", id: nextAppointment.id })}><MessageCircleMore data-icon="inline-start" />Enviar recordatorio</Button>}
                   {!patient.whatsappConsent && (
                     <Alert className="rounded-xl border-[#eadfc9] bg-[#fbf8f0] text-[#715d39]">
                       <ShieldAlert aria-hidden="true" /><AlertTitle className="text-sm">No se puede enviar por WhatsApp</AlertTitle><AlertDescription className="text-xs text-[#806e4d]">Usá el canal habitual hasta contar con autorización registrada.</AlertDescription>
                     </Alert>
                   )}
-                  <section><SectionLabel>Historial de comunicaciones</SectionLabel><CommunicationList data={data} patientId={patient.id} /></section>
+                  <section><SectionLabel>Historial de comunicaciones (simulado)</SectionLabel><CommunicationList data={data} patientId={patient.id} /></section>
                 </>
               )}
             </div>
