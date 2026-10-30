@@ -192,6 +192,7 @@ export function getReminderSummary(state: DemoState, todayKey: string, nowMs: nu
       && item.status === "delivered"
       && getDateKeyInArgentina(new Date(item.at)) === todayKey).length,
     confirmed: state.appointments.filter((item) => item.state === "scheduled"
+      && item.date >= todayKey
       && item.confirmation === "confirmed"
       && item.reminderAttempts.length > 0).length,
     noResponse: state.appointments.filter((item) => isEligible(item, nowMs)

@@ -111,7 +111,10 @@ El motor envía a través de una interfaz chica, por ejemplo `send(mensaje) → 
 
 **Inicio**
 
-- Un resumen del día: recordatorios enviados automáticamente, confirmados y sin respuesta, con la aclaración de que son simulados.
+- Un resumen del día, con la aclaración de que los mensajes son simulados:
+  - **Enviados:** recordatorios entregados automáticamente hoy.
+  - **Confirmados:** turnos de hoy en adelante, confirmados después de recibir un recordatorio. Los turnos pasados no cuentan.
+  - **Sin respuesta:** turnos futuros con un recordatorio entregado y todavía pendientes.
 - **"Hay que llamar":** muestra todos los turnos, sin el límite de 5 de "Necesitan tu atención", ordenados por el turno más cercano. Cada fila tiene paciente, teléfono, día y hora, motivo y acceso al detalle.
 - **"Solicitudes":** turnos con pedido de reprogramar o cancelar, con acceso al detalle.
 - "Necesitan tu atención" deja de mostrar acciones de recordatorio y sigue mostrando seguimientos.

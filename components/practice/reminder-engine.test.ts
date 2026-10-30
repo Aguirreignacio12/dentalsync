@@ -292,6 +292,13 @@ describe("listas", () => {
     expect(isEligible(appointment(HOUR, { confirmation: "confirmed" }), nowMs)).toBe(false)
   })
 
+  it("getReminderSummary no cuenta confirmados de turnos pasados", () => {
+    const past = appointment(-48 * HOUR, { id: "past", confirmation: "confirmed", attendance: "attended", reminderAttempts: [delivered("first", 96 * HOUR)] })
+    const today = appointment(-HOUR, { id: "today", confirmation: "confirmed", reminderAttempts: [delivered("first", 30 * HOUR)] })
+
+    expect(getReminderSummary(stateWith([past, today]), "2026-11-03", nowMs).confirmed).toBe(1)
+  })
+
   it("getReminderSummary cuenta enviados de hoy, confirmados y sin respuesta", () => {
     const sent = runReminderCycle(stateWith([appointment(30 * HOUR), appointment(40 * HOUR, { id: "apt-2" })]), NOW, delivers)
     const state = { ...sent, appointments: sent.appointments.map((item) => item.id === "apt-2" ? applyPatientResponse(item, "confirmed") : item) }
