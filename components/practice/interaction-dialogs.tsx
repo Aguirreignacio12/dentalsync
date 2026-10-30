@@ -28,15 +28,11 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Badge } from "@/components/ui/badge"
 import { PatientAvatar } from "./status-badges"
 import { addDays } from "./demo-data"
-import { formatDateLong, formatRelativeDate, getFirstName } from "./formatters"
+import { getFirstName } from "./formatters"
 import type { DemoState, Patient } from "./types"
 
-export type MessageTarget =
-  | { kind: "appointment"; id: string }
-  | { kind: "follow-up"; id: string }
-  | null
+export type MessageTarget = { kind: "follow-up"; id: string } | null
 
-export type SimulatedAppointmentResponse = "confirmed" | "reschedule" | "cancel" | "no-response"
 export type SimulatedFollowUpResponse = "wants-to-schedule" | "no-response"
 export type ContactOutcome = "wants-to-schedule" | "no-response" | "contact-later"
 
@@ -47,20 +43,14 @@ function firstName(patient?: Patient) {
 export function SendWhatsAppDialog({
   target,
   data,
-  todayKey,
   onOpenChange,
-  onSendAppointment,
   onSendFollowUp,
-  onAppointmentResponse,
   onFollowUpResponse,
 }: {
   target: MessageTarget
   data: DemoState
-  todayKey: string
   onOpenChange: (open: boolean) => void
-  onSendAppointment: (id: string) => void
   onSendFollowUp: (id: string) => void
-  onAppointmentResponse: (id: string, response: SimulatedAppointmentResponse) => void
   onFollowUpResponse: (id: string, response: SimulatedFollowUpResponse) => void
 }) {
   const [sent, setSent] = useState(false)
@@ -73,20 +63,11 @@ export function SendWhatsAppDialog({
 
   if (!target) return null
 
-  const appointment = target.kind === "appointment"
-    ? data.appointments.find((item) => item.id === target.id)
-    : undefined
-  const followUp = target.kind === "follow-up"
-    ? data.followUps.find((item) => item.id === target.id)
-    : undefined
-  const patient = data.patients.find((item) => item.id === (appointment?.patientId ?? followUp?.patientId))
+  const followUp = data.followUps.find((item) => item.id === target.id)
+  const patient = data.patients.find((item) => item.id === followUp?.patientId)
   if (!patient) return null
 
-  const isAppointment = target.kind === "appointment" && !!appointment
-  const title = isAppointment ? "Enviar recordatorio" : "Contactar por seguimiento"
-  const preview = isAppointment && appointment
-    ? `Hola ${firstName(patient)}, te recordamos tu turno en el consultorio de la Dra. Laura para ${formatRelativeDate(appointment.date, todayKey)} a las ${appointment.time}. ¿Podés confirmar tu asistencia?`
-    : `Hola ${firstName(patient)}, te escribimos desde el consultorio de la Dra. Laura. Si querés coordinar tu próximo turno, respondé este mensaje y te ayudamos.`
+  const preview = `Hola ${firstName(patient)}, te escribimos desde el consultorio de la Dra. Laura. Si querés coordinar tu próximo turno, respondé este mensaje y te ayudamos.`
   const canSend = patient.whatsappConsent && !sent
 
   return (
@@ -106,7 +87,7 @@ export function SendWhatsAppDialog({
             <div className="mb-1 flex size-10 items-center justify-center rounded-[14px] bg-primary/10 text-primary">
               <MessageCircleMore aria-hidden="true" className="size-5" />
             </div>
-            <DialogTitle className="text-xl font-semibold tracking-tight">{title}</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight">Contactar por seguimiento</DialogTitle>
             <DialogDescription>
               Revisá el contacto y el texto antes de simular el envío.
             </DialogDescription>
@@ -122,15 +103,6 @@ export function SendWhatsAppDialog({
               {patient.whatsappConsent ? "Autorizado" : "Sin permiso"}
             </Badge>
           </div>
-
-          {appointment && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-muted/65 px-3.5 py-3 text-xs text-foreground/80">
-              <Clock3 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-              <span className="font-medium">{formatDateLong(appointment.date)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-semibold tabular-nums">{appointment.time}</span>
-            </div>
-          )}
 
           <div className="mt-5">
             <div className="mb-2 flex items-center justify-between">
@@ -159,28 +131,7 @@ export function SendWhatsAppDialog({
             </Alert>
           )}
 
-          {sent && isAppointment && appointment && (
-            <div className="mt-4 rounded-2xl border border-border/80 bg-background p-3.5">
-              <p className="text-xs font-semibold text-foreground">Simular respuesta del paciente</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs" onClick={() => { onAppointmentResponse(appointment.id, "confirmed"); setResponse("Turno confirmado") }}>
-                  <Check data-icon="inline-start" />Confirmar
-                </Button>
-                <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs" onClick={() => { onAppointmentResponse(appointment.id, "reschedule"); setResponse("Pidió reprogramar") }}>
-                  <CalendarPlus2 data-icon="inline-start" />Necesito reprogramar
-                </Button>
-                <Button size="sm" variant="outline" className="h-9 rounded-lg text-xs" onClick={() => { onAppointmentResponse(appointment.id, "cancel"); setResponse("Solicitó cancelar") }}>
-                  Solicitar cancelar
-                </Button>
-                <Button size="sm" variant="ghost" className="h-9 rounded-lg text-xs text-muted-foreground" onClick={() => { onAppointmentResponse(appointment.id, "no-response"); setResponse("Sin respuesta") }}>
-                  Sin respuesta
-                </Button>
-              </div>
-              {response && <p role="status" className="mt-3 text-xs font-medium text-primary">{response}. La asistencia se registra por separado.</p>}
-            </div>
-          )}
-
-          {sent && !isAppointment && followUp && (
+          {sent && followUp && (
             <div className="mt-4 rounded-2xl border border-border/80 bg-background p-3.5">
               <p className="text-xs font-semibold text-foreground">Simular respuesta</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -203,7 +154,6 @@ export function SendWhatsAppDialog({
             disabled={!canSend}
             onClick={() => {
               if (!patient.whatsappConsent) return
-              if (appointment) onSendAppointment(appointment.id)
               if (followUp) onSendFollowUp(followUp.id)
               setSent(true)
             }}

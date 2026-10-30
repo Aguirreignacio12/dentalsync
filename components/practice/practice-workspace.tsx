@@ -438,8 +438,8 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
             <AppointmentsView
               data={data}
               todayKey={todayKey}
+              now={nowMs}
               onOpenAppointment={(id) => setDetailTarget({ kind: "appointment", id })}
-              onSendReminder={(id) => openMessage({ kind: "appointment", id })}
               onSync={syncCalendar}
               syncing={syncing}
             />
@@ -473,6 +473,7 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
         target={detailTarget}
         data={data}
         todayKey={todayKey}
+        now={nowMs}
         onClose={() => setDetailTarget(null)}
         onOpenAppointment={(id) => id && setDetailTarget({ kind: "appointment", id })}
         onOpenFollowUp={(id) => setDetailTarget({ kind: "follow-up", id })}
@@ -480,6 +481,7 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
         onConfirmAppointment={confirmAppointment}
         onCancelAppointment={cancelAppointment}
         onSetAttendance={setAttendance}
+        onSimulateResponse={recordAppointmentResponse}
         onReschedule={(id) => setRescheduleId(id)}
         onContactFollowUp={(id) => setContactFollowUpId(id)}
         onScheduleFollowUp={(id) => setScheduleFollowUpId(id)}
@@ -490,7 +492,6 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
         key={messageTarget ? `${messageTarget.kind}-${messageTarget.id}` : "message-dialog"}
         target={messageTarget}
         data={data}
-        todayKey={todayKey}
         onOpenChange={(open) => { if (!open) setMessageTarget(null) }}
         onSendFollowUp={sendFollowUpMessage}
         onFollowUpResponse={recordFollowUpResponse}
