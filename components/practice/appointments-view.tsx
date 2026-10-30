@@ -15,7 +15,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Input } from "@/components/ui/input"
 import { AppointmentBadges, CallReasonBadge, PatientAvatar, ReminderBadge } from "./status-badges"
 import { addDays } from "./demo-data"
-import { formatDateLong, formatDateShort } from "./formatters"
+import { formatDateLong, formatDateShort, formatRelativeDate } from "./formatters"
 import { isEligible } from "./reminder-engine"
 import type { Appointment, DemoState } from "./types"
 
@@ -51,16 +51,17 @@ export function AppointmentsView({
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<AppointmentFilter>("all")
   const patientById = useMemo(() => new Map(data.patients.map((patient) => [patient.id, patient])), [data.patients])
+  const showsAllDays = filter === "call"
 
   const visibleAppointments = data.appointments
-    .filter((appointment) => appointment.date === selectedDate)
+    .filter((appointment) => showsAllDays || appointment.date === selectedDate)
     .filter((appointment) => matchesFilter(appointment, filter, now))
     .filter((appointment) => {
       if (!search.trim()) return true
       const patient = patientById.get(appointment.patientId)
       return patient?.name.toLocaleLowerCase("es-AR").includes(search.trim().toLocaleLowerCase("es-AR"))
     })
-    .sort((a, b) => a.time.localeCompare(b.time))
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
 
   const dayLabel = selectedDate === todayKey ? "Hoy" : formatDateLong(selectedDate)
 
@@ -132,7 +133,7 @@ export function AppointmentsView({
         </CardContent>
       </Card>
 
-      <section aria-label={`Turnos para ${dayLabel}`} className="flex flex-col gap-3">
+      <section aria-label={showsAllDays ? "Turnos para llamar" : `Turnos para ${dayLabel}`} className="flex flex-col gap-3">
         {visibleAppointments.length ? visibleAppointments.map((appointment) => {
           const patient = patientById.get(appointment.patientId)
           if (!patient) return null
@@ -155,6 +156,7 @@ export function AppointmentsView({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {showsAllDays && <span className="text-xs font-medium text-muted-foreground">{formatRelativeDate(appointment.date, todayKey)}</span>}
                   <AppointmentBadges appointment={appointment} />
                   <ReminderBadge state={appointment.reminder} />
                   {callReason && <CallReasonBadge reason={callReason} />}

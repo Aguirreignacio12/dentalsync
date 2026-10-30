@@ -99,7 +99,7 @@ Español rioplatense y sin información clínica. Los dos recordatorios incluyen
 
 ### Motor de recordatorios
 
-Un módulo de TypeScript puro, sin React ni acceso al navegador, que recibe el estado y la hora actual y devuelve el estado nuevo. Corre al abrir la app y cada minuto mientras esté abierta. Correrlo varias veces con la misma hora no cambia el resultado.
+Un módulo de TypeScript puro, sin React ni acceso al navegador, que recibe el estado y la hora actual y devuelve el estado nuevo. Corre al abrir la app, cada minuto mientras esté abierta y justo después de que la asistente reprograme o agende un turno. Correrlo varias veces con la misma hora no cambia el resultado.
 
 La clave de idempotencia es la combinación de turno y paso (primero o segundo). No puede depender de que la pantalla se haya montado una sola vez: React puede ejecutar efectos dos veces en desarrollo.
 
@@ -122,7 +122,7 @@ El motor envía a través de una interfaz chica, por ejemplo `send(mensaje) → 
 **Turnos**
 
 - Se quita el botón de enviar recordatorio.
-- Se muestra el estado del recordatorio y se agrega el filtro "Hay que llamar".
+- Se muestra el estado del recordatorio y se agrega el filtro "Hay que llamar", que muestra los turnos de todos los días e indica el día de cada uno.
 
 **Detalle del turno**
 

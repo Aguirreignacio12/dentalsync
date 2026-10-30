@@ -237,13 +237,13 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
       reminder: "not-sent",
       reminderAttempts: [],
     }
-    setData((current) => ({
+    setData((current) => runReminderCycle({
       ...current,
       appointments: [...current.appointments, appointment],
       followUps: current.followUps.map((item) => item.id === followUp.id
         ? { ...item, state: "scheduled", nextAppointmentId: appointment.id, needsReview: false, activities: [...item.activities, { id: makeId("activity"), label: "Próximo turno agendado", detail: `${date} · ${time}`, at: now, kind: "scheduled" }] }
         : item),
-    }))
+    }, now, demoGateway))
     setScheduleFollowUpId(null)
     toast.success("Turno agregado a la demo", { description: "El seguimiento quedó marcado como agendado." })
   }
@@ -342,11 +342,11 @@ export function PracticeWorkspace({ realTodayKey, nowIso }: { realTodayKey: stri
   function saveReschedule(date: string, time: string) {
     if (!rescheduleAppointment) return
     const communication = createSystemCommunication(rescheduleAppointment.patientId, `Turno actualizado en la demo para ${date} a las ${time}.`, now, { appointmentId: rescheduleAppointment.id })
-    setData((current) => ({
+    setData((current) => runReminderCycle({
       ...current,
       appointments: current.appointments.map((item) => item.id === rescheduleAppointment.id ? resetReminderCycle(item, date, time) : item),
       communications: [communication, ...current.communications],
-    }))
+    }, now, demoGateway))
     setRescheduleId(null)
     toast.success("Turno reprogramado", { description: "Se limpió la confirmación para el nuevo horario." })
   }
